@@ -3,7 +3,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from flask_cors import CORS
 
-cred = credentials.Certificate("/etc/secrets/firebase_secret.json")
+cred = credentials.Certificate("firebase_secret.json")
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
@@ -92,11 +92,13 @@ def buy():
     new_points = points - cost
     set_user_points(user_id, new_points)
 
-    purchase_queue.append({
-        "user": user_id,
-        "item": item_name,
-        "cost": cost
-    })
+    # Only queue if NOT an admin adjustment
+    if item_name != "ADMIN_ADJUSTMENT":
+        purchase_queue.append({
+            "user": user_id,
+            "item": item_name,
+            "cost": cost
+        })
 
     return jsonify({"ok": True, "new_points": new_points})
 
