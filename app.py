@@ -191,7 +191,9 @@ def queue_next():
     """Get next item in purchase queue"""
     if not purchase_queue:
         return jsonify({"command": "none"})
-    return jsonify(purchase_queue[0])
+    before = jsonify(purchase_queue[0])
+    purchase_item = purchase_queue.pop(0)
+    return before
 
 @app.route("/queue/ack", methods=["POST"])
 def queue_ack():
