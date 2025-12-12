@@ -3,9 +3,6 @@ import firebase_admin
 from firebase_admin import credentials, firestore, auth
 from flask_cors import CORS
 from functools import wraps
-from flask_socketio import SocketIO, emit
-import os
-
 #/etc/secrets/firebase_secret.json
 cred = credentials.Certificate("/etc/secrets/firebase_secret.json")
 firebase_admin.initialize_app(cred)
@@ -19,12 +16,13 @@ CORS(app, resources={
         "allow_headers": ["Content-Type", "Authorization"]
     }
 })
-socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True)
+purchase_queue = []
 
 # List of admin emails - add your admin email addresses here
 ADMIN_EMAILS = [
     "kautikmandve@gmail.com",
     "adam.lueken@d128.org"
+    # Add more admin emails as needed
 ]
 
 def verify_token(f):
@@ -79,28 +77,6 @@ def get_or_create_user(user_id, email):
     data = doc.to_dict()
     return data.get('points', 0), data.get('is_admin', False)
 
-# ======================
-# SOCKET.IO EVENTS
-# ======================
-@socketio.on('connect')
-def handle_connect():
-    """Handle client connection"""
-    print(f'Client connected: {request.sid}')
-    emit('connection_response', {'status': 'connected'})
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    """Handle client disconnection"""
-    print(f'Client disconnected: {request.sid}')
-
-@socketio.on('ping')
-def handle_ping():
-    """Handle ping from client"""
-    emit('pong')
-
-# ======================
-# HTTP ROUTES
-# ======================
 @app.route("/auth/google", methods=["POST"])
 def google_auth():
     """Authenticate with Google and get/create user"""
@@ -202,16 +178,30 @@ def buy():
     
     # Only queue if NOT an admin adjustment
     if item_name != "ADMIN_ADJUSTMENT":
-        purchase_item = {
+        purchase_queue.append({
             "user": user_id,
             "item": item_name,
             "cost": cost
-        }
-        # Emit to all connected clients
-        print(f"Emitting task_update: {purchase_item}")
-        socketio.emit("task_update", purchase_item, broadcast=True)
+        })
     
     return jsonify({"ok": True, "new_points": new_points})
 
+@app.route("/queue/next", methods=["GET"])
+def queue_next():
+    """Get next item in purchase queue"""
+    if not purchase_queue:
+        return jsonify({"command": "none"})
+    before = jsonify(purchase_queue[0])
+    purchase_item = purchase_queue.pop(0)
+    return before
+
+@app.route("/queue/ack", methods=["POST"])
+def queue_ack():
+    """Acknowledge purchase completion"""
+    if purchase_queue:
+        purchase_item = purchase_queue.pop(0)
+        return jsonify({"ok": True, "processed": purchase_item})
+    return jsonify({"ok": False, "error": "Queue empty"}), 400
+
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=8000, debug=True)
+    app.run(host="0.0.0.0", port=8000)
